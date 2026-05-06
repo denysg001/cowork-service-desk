@@ -1,0 +1,27 @@
+{
+  "name": "coworking-service-desk",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @cowork/* dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @cowork/api prisma:migrate",
+    "db:seed": "pnpm --filter @cowork/api prisma:seed",
+    "docker:up": "docker compose up --build",
+    "backup:test": "bash scripts/restore-test.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

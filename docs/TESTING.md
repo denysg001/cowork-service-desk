@@ -1,0 +1,28 @@
+# Testing
+
+The CI runs:
+
+```bash
+pnpm build
+pnpm test
+```
+
+Current focused tests cover:
+
+- Ticket optimistic locking.
+- Invalid ticket status transitions.
+- Cache stampede prevention.
+- BullMQ retry/backoff defaults.
+
+Production acceptance target is 70% minimum coverage across API and workers. The first scaffold intentionally wires coverage reporting, but the current API coverage report is below that target because route, auth, upload, websocket, and worker integration suites still need expansion against real PostgreSQL and Redis test containers.
+
+Recommended next suites:
+
+- Auth session rotation, revoke, remote logout, and max-session eviction.
+- Idempotent ticket creation replay.
+- Soft delete visibility.
+- ETag `If-None-Match` behavior.
+- Websocket reconnect REST refetch behavior.
+- BullMQ final failure persistence in `DeadLetterJob`.
+- Upload magic-byte validation and path traversal rejection.
+- Graceful degradation with Redis, SMTP, and S3 failures.
