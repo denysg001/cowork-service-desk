@@ -13,14 +13,14 @@ async function main() {
   );
 
   const users = await Promise.all([
-    prisma.user.upsert({ where: { email: "admin@coworking.com" }, update: {}, create: { email: "admin@coworking.com", name: "Admin Coworking", role: "ADMIN", passwordHash: adminHash } }),
-    prisma.user.upsert({ where: { email: "op1@coworking.com" }, update: {}, create: { email: "op1@coworking.com", name: "Operador 1", role: "OPERATOR", passwordHash: operHash } }),
-    prisma.user.upsert({ where: { email: "op2@coworking.com" }, update: {}, create: { email: "op2@coworking.com", name: "Operador 2", role: "OPERATOR", passwordHash: operHash } }),
+    prisma.user.upsert({ where: { email: "admin@coworking.com" }, update: { passwordHash: adminHash, active: true, deletedAt: null }, create: { email: "admin@coworking.com", name: "Admin Coworking", role: "ADMIN", passwordHash: adminHash } }),
+    prisma.user.upsert({ where: { email: "op1@coworking.com" }, update: { passwordHash: operHash, active: true, deletedAt: null }, create: { email: "op1@coworking.com", name: "Operador 1", role: "OPERATOR", passwordHash: operHash } }),
+    prisma.user.upsert({ where: { email: "op2@coworking.com" }, update: { passwordHash: operHash, active: true, deletedAt: null }, create: { email: "op2@coworking.com", name: "Operador 2", role: "OPERATOR", passwordHash: operHash } }),
     ...companies.flatMap((company, index) =>
       [1, 2].map((n) =>
         prisma.user.upsert({
           where: { email: `cliente${n}.${index + 1}@coworking.com` },
-          update: {},
+          update: { passwordHash: clientHash, active: true, deletedAt: null },
           create: { email: `cliente${n}.${index + 1}@coworking.com`, name: `Cliente ${n} ${company.name}`, role: "CLIENT", companyId: company.id, passwordHash: clientHash }
         })
       )

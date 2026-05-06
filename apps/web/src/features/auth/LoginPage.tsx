@@ -27,8 +27,13 @@ export function LoginPage() {
       setAuth(data.accessToken, data.user);
       navigate("/");
     } catch {
-      setLoginError("Nao foi possivel entrar. Confira email, senha e API.");
+      setLoginError("Nao foi possivel entrar. Use admin@coworking.com com senha admin123 ou confira se a API esta pronta.");
     }
+  }
+  async function loginAsAdmin() {
+    form.setValue("email", "admin@coworking.com");
+    form.setValue("password", "admin123");
+    await form.handleSubmit(onSubmit)();
   }
   return (
     <main className="grid min-h-screen place-items-center px-4">
@@ -45,6 +50,9 @@ export function LoginPage() {
         <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
           <Input aria-label="Email" autoComplete="username" type="email" {...form.register("email")} />
           <Input aria-label="Senha" autoComplete="current-password" type="password" {...form.register("password")} />
+          <div className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+            Demo: <span className="font-mono text-foreground">admin@coworking.com</span> / <span className="font-mono text-foreground">admin123</span>
+          </div>
           {(form.formState.errors.email || form.formState.errors.password || loginError) && (
             <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-foreground">
               {loginError ?? "Informe um email valido e senha com pelo menos 6 caracteres."}
@@ -52,6 +60,9 @@ export function LoginPage() {
           )}
           <Button className="w-full" disabled={form.formState.isSubmitting} type="submit">
             {form.formState.isSubmitting ? "Entrando..." : "Entrar"}
+          </Button>
+          <Button className="w-full bg-muted text-foreground hover:bg-background" disabled={form.formState.isSubmitting} onClick={loginAsAdmin} type="button">
+            Entrar como admin demo
           </Button>
         </form>
       </Card>
