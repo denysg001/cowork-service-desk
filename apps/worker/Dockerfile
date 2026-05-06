@@ -5,7 +5,7 @@ COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages packages
 COPY apps/api/prisma apps/api/prisma
 COPY apps/worker apps/worker
-RUN pnpm install --frozen-lockfile=false && pnpm --filter @cowork/worker build
+RUN pnpm install --frozen-lockfile=false && pnpm --filter @cowork/api prisma:generate && pnpm --filter @cowork/worker build:only
 
 FROM node:20-alpine
 WORKDIR /app
