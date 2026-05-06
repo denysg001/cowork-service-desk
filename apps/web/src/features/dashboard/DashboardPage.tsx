@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Bell, Building2, LayoutDashboard, LogOut, Map, MessageSquare, TicketCheck } from "lucide-react";
 import { api } from "../../lib/api";
@@ -26,8 +26,7 @@ export function DashboardPage() {
   }, [accessToken, queryClient]);
 
   if (!accessToken) {
-    navigate("/login");
-    return null;
+    return <Navigate to="/login" replace />;
   }
 
   async function handleLogout() {
