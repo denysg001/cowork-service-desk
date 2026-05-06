@@ -16,7 +16,7 @@ export function LoginPage() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "admin@cowork.local", password: "Admin123!ChangeMe" }
+    defaultValues: { email: "admin@coworking.com", password: "admin123" }
   });
   async function onSubmit(values: z.infer<typeof schema>) {
     const { data } = await api.post("/auth/login", values);

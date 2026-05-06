@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { listSessions, login, refresh, revokeOtherSessions, revokeSession } from "./service.js";
 import { isProduction } from "../../config/env.js";
 
-const credentials = z.object({ email: z.string().email(), password: z.string().min(8) });
+const credentials = z.object({ email: z.string().email(), password: z.string().min(6) });
 
 export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/login", async (request, reply) => {

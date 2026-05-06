@@ -1,8 +1,8 @@
 export const queueNames = {
-  sla: "sla-check:v1",
-  notifications: "notifications:v1",
-  reports: "reports-jobs:v1",
-  cleanup: "cleanup-jobs:v1"
+  sla: "sla-check-v1",
+  notifications: "notifications-v1",
+  reports: "reports-jobs-v1",
+  cleanup: "cleanup-jobs-v1"
 } as const;
 
 export const defaultJobOptions = {

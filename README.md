@@ -4,273 +4,241 @@
 ![Node](https://img.shields.io/badge/node-20.x-1f6f50)
 ![PostgreSQL](https://img.shields.io/badge/postgresql-16-336791)
 ![Redis](https://img.shields.io/badge/redis-7-bb2222)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![Licenca](https://img.shields.io/badge/licenca-MIT-blue)
 
-Coworking Service Desk is a single-tenant SaaS operations platform for coworking teams. It is designed as a premium NOC-style control plane for tickets, SLA, rooms, companies, realtime communication, notifications, reporting, visual maps, and operational auditability.
+Coworking Service Desk é uma plataforma SaaS single-tenant para operação de coworking. A proposta é funcionar como um painel premium de operações, inspirado em NOC/centro de controle, e não como um helpdesk genérico.
 
-It is not a generic helpdesk. The product assumes the coworking operator owns the installation, companies are customers of that coworking, and users with `CLIENT` role belong to those companies. `OPERATOR` and `ADMIN` users are internal coworking staff.
+O sistema organiza chamados, empresas clientes, usuários, salas, categorias, fornecedores, SLA, chat, notificações, relatórios, mapa visual, auditoria, workers distribuídos e atualizações realtime.
 
-## Table Of Contents
+## Sumário
 
-- [Product Vision](#product-vision)
-- [NOC Concept](#noc-concept)
-- [Architecture](#architecture)
-- [Diagrams](#diagrams)
+- [Visão Geral](#visão-geral)
+- [Diferença Para Um Helpdesk Comum](#diferença-para-um-helpdesk-comum)
+- [Arquitetura](#arquitetura)
 - [Stack](#stack)
-- [Repository Structure](#repository-structure)
-- [Requirements](#requirements)
-- [Local Setup](#local-setup)
-- [Seed Credentials](#seed-credentials)
-- [Environment Variables](#environment-variables)
-- [Development](#development)
-- [Production](#production)
-- [Scalability](#scalability)
-- [Realtime](#realtime)
-- [SLA Engine](#sla-engine)
-- [Security](#security)
+- [Estrutura Do Repositório](#estrutura-do-repositório)
+- [Como Testar Com Docker](#como-testar-com-docker)
+- [Credenciais Seed](#credenciais-seed)
+- [Como Testar A API](#como-testar-a-api)
+- [Como Testar Observabilidade](#como-testar-observabilidade)
+- [Desenvolvimento Local Sem Docker Completo](#desenvolvimento-local-sem-docker-completo)
+- [Variáveis De Ambiente](#variáveis-de-ambiente)
+- [Rotas Principais](#rotas-principais)
+- [Workers E Filas](#workers-e-filas)
+- [WebSocket](#websocket)
+- [SLA](#sla)
 - [Uploads](#uploads)
-- [Observability](#observability)
-- [Cache](#cache)
-- [Workers](#workers)
-- [Database](#database)
-- [Operational Flow](#operational-flow)
-- [Frontend](#frontend)
-- [Dashboard](#dashboard)
-- [Map](#map)
-- [Chat](#chat)
-- [Tests](#tests)
-- [TestSprite](#testsprite)
-- [CI/CD](#cicd)
-- [Backup And Restore](#backup-and-restore)
+- [Segurança](#segurança)
+- [Testes E CI](#testes-e-ci)
+- [Documentação](#documentação)
 - [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
-- [Project Philosophy](#project-philosophy)
 
-## Product Vision
+## Visão Geral
 
-The platform replaces spreadsheets, ad hoc chat groups, and informal ticket tracking with a realtime operational system for coworking facilities. It supports:
+Modelo de produto:
 
-- client-originated tickets through web or QR-code room links;
-- internal operator triage and assignment;
-- SLA tracking by category and business hours;
-- client and internal chat channels;
-- room map visibility using relative coordinates;
-- supplier involvement without making suppliers tenants;
-- audit trails for operational accountability;
-- realtime updates through Socket.io with REST as source of truth.
+- uma instalação atende um coworking;
+- empresas são clientes/locatárias do coworking, não tenants isolados;
+- usuários `CLIENT` pertencem a empresas;
+- usuários `OPERATOR` e `ADMIN` são equipe interna do coworking;
+- PostgreSQL é a fonte da verdade;
+- Redis acelera cache, filas, pub/sub e locks, mas não armazena sessão como fonte da verdade;
+- WebSocket melhora a experiência realtime, mas REST continua sendo a fonte de verdade.
 
-## NOC Concept
+## Diferença Para Um Helpdesk Comum
 
-The interface is intended to feel like a coworking operations center:
+Este projeto prioriza operação física e SLA:
 
-- dense but legible operational information;
-- dark premium control-room aesthetic;
-- ticket queues, SLA status, room map, realtime counters and alerts;
-- monospace protocol identifiers for ticket numbers, rooms and jobs;
-- operational widgets rather than marketing cards;
-- fast recovery from websocket, Redis, worker or SMTP degradation.
+- salas e mapa visual são entidades de primeira classe;
+- SLA depende de categoria e horário útil do coworking;
+- operadores têm painel, relatórios, filas e chat interno;
+- histórico e auditoria registram decisões operacionais;
+- workers processam SLA, notificações, relatórios e limpeza fora do servidor HTTP.
 
-## Difference From A Generic Helpdesk
-
-Generic helpdesks focus on request threads. This platform focuses on operating a physical coworking environment:
-
-- rooms and locations are first-class entities;
-- SLA is based on coworking business hours and category policy;
-- companies are customers, not tenants;
-- internal operators have operational dashboards, maps and reports;
-- websocket is used for control-room responsiveness but never becomes the source of truth;
-- workers and queues handle SLA, notification, report and cleanup workloads separately from HTTP.
-
-## Architecture
-
-The MVP architecture uses two machines:
-
-- Data machine: PostgreSQL 16, Redis 7 and backup jobs.
-- App machine: Nginx, static React build, stateless Fastify API and BullMQ workers.
-
-The backend is stateless and can run multiple instances. Sessions are persisted in PostgreSQL. Redis is used for cache, queues, pub/sub and distributed locks only.
-
-## Diagrams
-
-### General Architecture
+## Arquitetura
 
 ```mermaid
 flowchart LR
-  Browser[React SPA] --> Nginx[Nginx reverse proxy]
-  Nginx --> API1[Fastify API instance]
-  Nginx --> API2[Fastify API instance]
-  API1 --> PG[(PostgreSQL 16)]
-  API2 --> PG
-  API1 --> Redis[(Redis 7 AOF)]
-  API2 --> Redis
-  API1 <-->|Socket.io Redis Adapter| Redis
-  API2 <-->|Socket.io Redis Adapter| Redis
-  Worker[Separate BullMQ workers] --> Redis
+  Browser[React SPA] --> Nginx[Nginx]
+  Nginx --> API[Fastify API stateless]
+  Nginx --> Web[React build estático]
+  API --> PG[(PostgreSQL 16)]
+  API --> Redis[(Redis 7 AOF)]
+  Worker[BullMQ Workers] --> Redis
   Worker --> PG
-  Backup[Backup job] --> PG
+  API <-->|Socket.io Redis Adapter| Redis
+  Prom[Prometheus] --> API
+  Grafana[Grafana] --> Prom
 ```
 
-### Auth
+Topologia alvo em produção:
 
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant Web as React
-  participant API as Fastify
-  participant DB as PostgreSQL
-  U->>Web: email/password
-  Web->>API: POST /api/v1/auth/login
-  API->>DB: validate user and create Session
-  API-->>Web: access JWT + httpOnly refresh cookie
-  Web->>API: requests with Bearer access token
-  API->>DB: verify Session is active
-```
-
-### Ticket Flow
-
-```mermaid
-stateDiagram-v2
-  [*] --> NEW
-  NEW --> TRIAGE
-  NEW --> CANCELLED
-  TRIAGE --> SCHEDULED
-  TRIAGE --> IN_PROGRESS
-  TRIAGE --> CANCELLED
-  SCHEDULED --> IN_PROGRESS
-  SCHEDULED --> CANCELLED
-  IN_PROGRESS --> WAITING_CLIENT
-  IN_PROGRESS --> WAITING_SUPPLIER
-  IN_PROGRESS --> PAUSED
-  IN_PROGRESS --> RESOLVED
-  IN_PROGRESS --> CANCELLED
-  WAITING_CLIENT --> IN_PROGRESS
-  WAITING_SUPPLIER --> IN_PROGRESS
-  PAUSED --> IN_PROGRESS
-  RESOLVED --> CLOSED
-  RESOLVED --> IN_PROGRESS
-```
-
-### Websocket
-
-```mermaid
-sequenceDiagram
-  participant Web as React
-  participant API as Fastify + Socket.io
-  participant Redis as Redis Adapter
-  Web->>API: handshake with JWT
-  API->>Redis: join user, role and ticket rooms
-  API-->>Web: ticket:updated envelope
-  Web->>API: REST refetch after reconnect
-```
-
-### SLA
-
-```mermaid
-flowchart TD
-  TicketCreated[Ticket created] --> Deadline[Calculate business-hours deadline]
-  Deadline --> Worker[SLA worker every 5 min]
-  Worker --> Lock[Redis SET NX lock]
-  Lock --> Batch[Batch active tickets]
-  Batch --> Status[Update OK / AT_RISK / BREACHED]
-  Status --> Notify[Create notifications]
-  Notify --> Realtime[Emit websocket warning/breach]
-```
-
-### Workers
-
-```mermaid
-flowchart LR
-  Redis[(Redis queues)] --> SLA[sla-check:v1]
-  Redis --> Notifications[notifications:v1]
-  Redis --> Reports[reports-jobs:v1]
-  Redis --> Cleanup[cleanup-jobs:v1]
-  SLA --> DLQ[(DeadLetterJob)]
-  Notifications --> DLQ
-  Reports --> DLQ
-  Cleanup --> DLQ
-```
-
-### Uploads
-
-```mermaid
-sequenceDiagram
-  participant Web
-  participant API
-  participant Storage
-  Web->>API: multipart upload
-  API->>API: filename sanitize + size + extension + magic bytes
-  API->>Storage: Local or S3 provider
-  API->>DB: Attachment row
-```
-
-### Deploy
-
-```mermaid
-flowchart TB
-  subgraph Data Machine
-    PG[(PostgreSQL)]
-    Redis[(Redis)]
-    Backup[Backup script/job]
-  end
-  subgraph App Machine
-    Nginx[Nginx + TLS]
-    Web[React static]
-    API[Fastify replicas]
-    Workers[BullMQ workers]
-  end
-  Nginx --> Web
-  Nginx --> API
-  API --> PG
-  API --> Redis
-  Workers --> PG
-  Workers --> Redis
-```
+- Máquina DB: PostgreSQL, Redis e backups.
+- Máquina APP: Nginx, frontend estático, backend Fastify e workers.
 
 ## Stack
 
-| Layer | Technology |
+| Camada | Tecnologias |
 | --- | --- |
-| Frontend | React 18, TypeScript strict, Vite, Tailwind CSS, shadcn-style primitives, Zustand |
-| Data fetching | TanStack Query v5, Axios |
-| Forms | React Hook Form, Zod |
+| Frontend | React 18, TypeScript strict, Vite, Tailwind CSS, Zustand |
+| Dados frontend | TanStack Query v5, Axios |
+| Formulários | React Hook Form, Zod |
 | Realtime | Socket.io client/server, Redis Adapter |
 | Backend | Node.js 20, Fastify, TypeScript strict |
-| Database | PostgreSQL 16, Prisma ORM |
-| Cache/Queues | Redis 7 AOF, BullMQ |
-| Auth | JWT access token, httpOnly refresh cookie, bcrypt |
+| Banco | PostgreSQL 16, Prisma ORM |
+| Redis | Cache, BullMQ, pub/sub, locks distribuídos |
+| Auth | JWT, refresh token em cookie httpOnly, bcrypt |
 | Logs | Winston JSON |
-| Tests | Vitest |
-| Infra | Docker Compose, Nginx, Prometheus, Grafana provisioning |
+| Testes | Vitest |
+| Infra | Docker Compose, Nginx, Prometheus, Grafana |
 
-## Repository Structure
-
-The repository currently uses pnpm workspaces:
+## Estrutura Do Repositório
 
 ```text
-apps/api       Fastify backend
-apps/web       React frontend
-apps/worker    BullMQ workers
-packages/shared shared contracts and Zod schemas
-infra          compose, nginx, postgres, redis, observability
-docs           architecture, operations and governance docs
-.github        workflows and templates
+apps/api          Backend Fastify
+apps/web          Frontend React
+apps/worker       Workers BullMQ
+packages/shared   Schemas Zod e tipos compartilhados
+infra             Docker Compose, Nginx, Redis, Postgres, observabilidade
+docs              Documentação operacional e arquitetural
+.github           Workflows e templates
 ```
 
-## Requirements
+## Como Testar Com Docker
 
-- Node.js 20.x
-- pnpm 9.x
-- Docker and Docker Compose
-- GitHub CLI for publishing and workflow inspection
-
-## Local Setup
+### 1. Preparar `.env`
 
 ```bash
-git clone https://github.com/denysg001/cowork-service-desk.git
-cd cowork-service-desk
 cp .env.example .env
+```
+
+Para desenvolvimento local com Docker Compose, mantenha:
+
+```env
+DATABASE_URL=postgresql://cowork:cowork@postgres:5432/cowork_service_desk?schema=public&connection_limit=10&pool_timeout=10
+REDIS_URL=redis://:cowork-redis-password@redis:6379/0
+CORS_ORIGINS=http://localhost:8080,http://localhost:5173
+FRONTEND_URL=http://localhost:8080
+```
+
+### 2. Subir banco e Redis
+
+```bash
+docker compose up -d postgres redis
+```
+
+Validar:
+
+```bash
+docker compose ps
+docker compose exec postgres pg_isready -U cowork -d cowork_service_desk
+docker compose exec redis redis-cli -a cowork-redis-password ping
+```
+
+### 3. Rodar migrations e seed
+
+```bash
+docker compose run --rm backend pnpm --filter @cowork/api prisma:migrate
+docker compose run --rm backend pnpm --filter @cowork/api prisma:seed
+```
+
+### 4. Subir aplicação completa
+
+```bash
+docker compose up -d --build backend worker web nginx prometheus grafana
+```
+
+### 5. Acessar
+
+- Aplicação: http://localhost:8080
+- Health: http://localhost:8080/health
+- Readiness: http://localhost:8080/ready
+- Métricas: http://localhost:8080/metrics
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3001
+
+### 6. Ver logs
+
+```bash
+docker compose logs -f backend
+docker compose logs -f worker
+docker compose logs -f nginx
+```
+
+## Credenciais Seed
+
+| Papel | Email | Senha |
+| --- | --- | --- |
+| ADMIN | `admin@coworking.com` | `admin123` |
+| OPERATOR | `op1@coworking.com` | `oper123` |
+| OPERATOR | `op2@coworking.com` | `oper123` |
+
+O seed também cria empresas, clientes, salas, categorias, fornecedores, tickets, mensagens, histórico e audit logs.
+
+## Como Testar A API
+
+Login via Nginx:
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@coworking.com","password":"admin123"}'
+```
+
+Copie o `accessToken` da resposta e teste tickets:
+
+```bash
+curl http://localhost:8080/api/v1/tickets \
+  -H "authorization: Bearer SEU_ACCESS_TOKEN"
+```
+
+Testar dashboard:
+
+```bash
+curl http://localhost:8080/api/v1/dashboard/summary \
+  -H "authorization: Bearer SEU_ACCESS_TOKEN"
+```
+
+Testar DLQ admin:
+
+```bash
+curl http://localhost:8080/api/v1/admin/dlq \
+  -H "authorization: Bearer SEU_ACCESS_TOKEN"
+```
+
+## Como Testar Observabilidade
+
+Prometheus:
+
+```bash
+open http://localhost:9090
+```
+
+Consultas úteis:
+
+```text
+cowork_http_request_duration_seconds_count
+cowork_websocket_connections
+```
+
+Grafana:
+
+```bash
+open http://localhost:3001
+```
+
+Login padrão da imagem Grafana:
+
+- usuário: `admin`
+- senha: `admin`
+
+## Desenvolvimento Local Sem Docker Completo
+
+Use Docker apenas para Postgres e Redis:
+
+```bash
+docker compose up -d postgres redis
 npx pnpm@9.12.3 install
-docker compose -f infra/docker-compose.db.yml up -d
 npx pnpm@9.12.3 --filter @cowork/api prisma:generate
 npx pnpm@9.12.3 --filter @cowork/api prisma:dev
 npx pnpm@9.12.3 --filter @cowork/api prisma:seed
@@ -279,211 +247,173 @@ npx pnpm@9.12.3 --filter @cowork/worker dev
 npx pnpm@9.12.3 --filter @cowork/web dev
 ```
 
-## Seed Credentials
+Nesse modo, ajuste `DATABASE_URL` e `REDIS_URL` para `localhost`.
 
-| Role | Email | Password |
-| --- | --- | --- |
-| ADMIN | admin@coworking.com | admin123 |
-| OPERATOR | op1@coworking.com | oper123 |
-| OPERATOR | op2@coworking.com | oper123 |
+## Variáveis De Ambiente
 
-## Environment Variables
-
-| Variable | Purpose |
+| Variável | Uso |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection URL with pool limits |
-| `REDIS_URL` | Redis URL with password |
-| `JWT_ACCESS_SECRET` / `JWT_SECRET` | Access token signing secret |
-| `JWT_REFRESH_SECRET` / `REFRESH_SECRET` | Refresh token signing secret |
-| `COOKIE_SECRET` | Fastify cookie signing secret |
-| `FRONTEND_URL` / `WEB_PUBLIC_URL` | Frontend allow-list origin |
-| `COWORKING_TIMEZONE` | SLA business timezone |
-| `BODY_LIMIT_BYTES` | JSON payload limit |
-| `SESSION_MAX_PER_USER` | Active session cap per user |
-| `JWT_CLOCK_SKEW_SECONDS` | JWT clock tolerance |
-| `UPLOAD_MAX_SIZE_MB` | Upload size limit |
-| `UPLOAD_ALLOWED_TYPES` | Comma-separated MIME allow-list |
-| `UPLOAD_STORAGE` / `STORAGE_PROVIDER` | `local` or `s3` |
-| `SMTP_*` | Email notification provider settings |
+| `DATABASE_URL` | Conexão PostgreSQL com limite de pool |
+| `REDIS_URL` | Redis com senha |
+| `JWT_ACCESS_SECRET` / `JWT_SECRET` | Assinatura do access token |
+| `JWT_REFRESH_SECRET` / `REFRESH_SECRET` | Assinatura/rotação do refresh token |
+| `COOKIE_SECRET` | Cookie httpOnly |
+| `SESSION_MAX_PER_USER` | Limite de sessões por usuário |
+| `COWORKING_TIMEZONE` | Timezone usado para SLA |
+| `BODY_LIMIT_BYTES` | Limite de JSON |
+| `UPLOAD_MAX_SIZE_MB` | Limite de upload |
+| `UPLOAD_ALLOWED_TYPES` | MIME types permitidos |
+| `UPLOAD_STORAGE` | `local` ou `s3` |
+| `SMTP_*` | Configuração futura de email |
 
-## Development
+## Rotas Principais
 
-Run API, workers and frontend in separate terminals. Websocket reconnects automatically; REST remains the source of truth.
+Operacionais sem versão:
 
-## Production
+- `GET /health`
+- `GET /ready`
+- `GET /metrics`
 
-Use `infra/docker-compose.db.yml` on the data machine and `infra/docker-compose.app.yml` on the app machine. Put TLS termination in front of Nginx or configure Nginx with certificates. Enable `secure=true` cookies only behind confirmed HTTPS.
+Negócio em `/api/v1`:
 
-## Scalability
+- Auth: login, refresh, logout e sessões.
+- Tickets: listagem, criação, detalhe, atualização, status, histórico e anexos.
+- Chat: mensagens client/internal.
+- Admin: usuários, empresas, salas, categorias, fornecedores e DLQ.
+- Dashboard: resumo operacional.
+- Reports: tickets, operadores, SLA e salas.
+- Notifications: listagem e marcação de leitura.
 
-Backend instances are stateless. Scale API replicas with Compose, Swarm, Kubernetes or an external load balancer. Keep total Prisma connection limits below PostgreSQL `max_connections`, or introduce PgBouncer/managed pooling.
+## Workers E Filas
 
-## Realtime
+Filas versionadas:
 
-Socket.io rooms:
+- `sla-check-v1`
+- `notifications-v1`
+- `reports-jobs-v1`
+- `cleanup-jobs-v1`
+
+Workers são processos separados e não iniciam Fastify nem abrem porta HTTP.
+
+## WebSocket
+
+Socket.io autentica via JWT no handshake e usa Redis Adapter para múltiplas instâncias.
+
+Rooms planejadas:
 
 - `user:{userId}`
 - `ticket:{ticketId}`
 - `role:operator`
 - `role:admin`
 
-Event payloads include `version`, `correlationId` and `timestamp`.
+Ao reconectar, o frontend invalida queries e refaz fetch REST.
 
-## SLA Engine
+## SLA
 
-SLA is category-based and uses the coworking timezone. The target design tracks business hours, pauses, reopenings, warnings and breaches through a distributed worker lock.
-
-## Security
-
-The platform uses JWT access tokens in memory, httpOnly refresh cookies, PostgreSQL-backed sessions, CORS allow-listing, CSP, rate limits, upload magic-byte validation and structured secret masking.
+SLA usa categoria, horário útil, timezone `COWORKING_TIMEZONE`, pausa acumulada e worker distribuído. O módulo `apps/api/src/modules/sla/calculator.ts` contém a base testável.
 
 ## Uploads
 
-Uploads are validated by filename, path traversal rules, size, extension and magic bytes. Public uploads should be avoided in production; prefer controlled download routes and a future isolated asset domain.
+Uploads validam:
 
-## Observability
+- tamanho;
+- nome de arquivo;
+- path traversal;
+- extensão;
+- MIME real por magic bytes;
+- divergência extensão/MIME.
 
-Fastify exposes `/metrics` for Prometheus. Logs are JSON and include `service` and `correlationId`. Worker failures persist in `DeadLetterJob`.
+## Segurança
 
-## Cache
+Implementado ou preparado:
 
-Redis-backed cache supports explicit invalidation, stale-while-revalidate, jitter and lock-based stampede prevention. Sessions, chat messages, critical ticket reads and personalized notifications must not be cached.
+- JWT access token;
+- refresh token em cookie httpOnly;
+- sessões como fonte da verdade no PostgreSQL;
+- CORS allow-list;
+- Helmet/CSP;
+- rate limit;
+- RBAC base;
+- upload seguro;
+- logs com masking/truncamento.
 
-## Workers
+## Testes E CI
 
-Workers are separate processes and never start Fastify. Queues are responsible for SLA checks, notifications, reports and cleanup. Failed final attempts are captured in DLQ.
-
-## Database
-
-PostgreSQL is the source of truth. Redis is not a session store. Migrations should use non-destructive expand/contract patterns in production.
-
-## Operational Flow
-
-1. Client opens ticket through web or QR code.
-2. Operator triages, schedules or starts work.
-3. SLA worker tracks risk/breach.
-4. Operators use internal notes and client chat.
-5. Ticket is resolved with diagnosis, action, validation and conclusion.
-6. Client/operator closes or reopens according to policy.
-
-## Frontend
-
-The frontend uses an operational dark UI, route-level data fetching, websocket-driven invalidation and Zustand stores for auth and persistent filters.
-
-## Dashboard
-
-Dashboard widgets focus on open tickets, SLA risk, breaches, operator load, rooms and realtime notifications.
-
-## Map
-
-Rooms use relative `positionX`, `positionY`, `width` and `height` values so the map can scale across screens.
-
-## Chat
-
-Chat has client and internal channels. Internal messages are restricted to coworking staff.
-
-## Tests
+Rodar localmente:
 
 ```bash
 npx pnpm@9.12.3 build
 npx pnpm@9.12.3 test
+docker build -f apps/api/Dockerfile .
+docker build -f apps/worker/Dockerfile .
+docker build -f apps/web/Dockerfile .
 ```
 
-The target is 70% coverage. See `docs/TESTING.md` for current gaps and expansion plan.
+O GitHub Actions executa:
 
-## TestSprite
+- Prisma generate;
+- build do pacote shared;
+- typecheck;
+- testes;
+- build;
+- Docker build API/worker/web;
+- validação básica de segurança;
+- validação de docs.
 
-Use `docs/testsprite.md` and the PR template to validate architecture, concurrency, race conditions, websocket consistency, workers, DLQ, locks, cache, N+1 queries, performance and production readiness.
+## Documentação
 
-## CI/CD
-
-GitHub Actions run install, Prisma generation, build and tests. PR title validation enforces Conventional Commits. Release workflow tags SemVer releases from `main`.
-
-## Backup And Restore
-
-Use `infra/scripts/backup.sh` and `infra/scripts/restore-test.sh`. Restore tests should run regularly against an isolated database.
+- `docs/architecture.md`
+- `docs/api.md`
+- `docs/deployment.md`
+- `docs/operations.md`
+- `docs/security.md`
+- `docs/observability.md`
+- `docs/testsprite.md`
+- `docs/versioning.md`
+- `docs/backup-restore.md`
+- `docs/troubleshooting.md`
 
 ## Troubleshooting
 
-### Redis offline
+Redis:
 
-API should continue without cache and without distributed websocket fanout. Workers and queues will pause until Redis returns.
+```bash
+docker compose logs redis
+docker compose exec redis redis-cli -a cowork-redis-password ping
+```
 
-### PostgreSQL offline
+Postgres:
 
-Readiness fails. API should not be considered deployable until PostgreSQL is available.
+```bash
+docker compose logs postgres
+docker compose exec postgres pg_isready -U cowork -d cowork_service_desk
+```
 
-### Websocket does not connect
+Backend:
 
-Check JWT handshake, Nginx upgrade headers, `/ws` proxy path and Redis Adapter connectivity.
+```bash
+docker compose logs -f backend
+curl http://localhost:8080/ready
+```
 
-### Cookies not set
+WebSocket:
 
-Verify `sameSite`, `secure`, HTTPS, proxy trust and frontend/backend origins.
+- conferir Nginx em `/ws` e `/socket.io`;
+- conferir token JWT;
+- conferir Redis Adapter.
 
-### CORS blocked
+Fila travada:
 
-Confirm `FRONTEND_URL`/`CORS_ORIGINS` allow-list and never use wildcard origin with credentials.
+```bash
+docker compose logs -f worker
+```
 
-### JWT failures
+Reset local completo, somente em ambiente de desenvolvimento:
 
-Check token expiration, clock skew and active Session row.
-
-### Prisma migration failed
-
-Do not reset production. Create a forward-only corrective migration.
-
-### Nginx websocket failure
-
-Verify `Upgrade` and `Connection` headers and proxy timeout.
-
-### Queues stuck
-
-Check Redis health, worker logs, concurrency limits, delayed jobs and DLQ growth.
-
-### DLQ growing
-
-Inspect job payload, final error, dependency health and retry configuration before reprocessing.
-
-### Upload failing
-
-Check file size, allowed MIME, extension mismatch, magic bytes and storage provider availability.
-
-### High CPU
-
-Inspect dashboard queries, report jobs, queue concurrency and missing indexes.
-
-### Memory leak
-
-Check websocket listeners, BullMQ listeners, timers and long-running batch jobs.
-
-### Cache inconsistent
-
-Validate explicit invalidation and stale key TTL.
-
-### Dashboard does not update
-
-Force REST refetch, inspect websocket connection and verify dashboard cache TTL.
-
-### Worker not processing
-
-Check worker process, Redis auth, queue names and lock keys.
-
-### Idempotency conflict
-
-Compare request hash and idempotency key scope.
-
-### Optimistic locking 409
-
-Frontend should refetch the ticket and retry with the latest version only after user confirmation.
-
-## Roadmap
-
-- `v0.1.0-alpha`: operational foundation.
-- `v0.2.0-alpha`: complete domain modules and frontend flows.
-- `v0.3.0-beta`: SLA engine, reporting and TestSprite hardening.
-- `v1.0.0`: production stable with 70%+ coverage and deployment runbooks.
-
-## Project Philosophy
-
-Prefer predictable operations over clever abstractions. PostgreSQL is the source of truth. Redis accelerates but does not own critical state. Websocket improves responsiveness but REST resolves truth. Workers isolate slow and retryable work. Every production feature must be observable, reversible and testable.
+```bash
+docker compose down -v
+docker compose up -d postgres redis
+docker compose run --rm backend pnpm --filter @cowork/api prisma:migrate
+docker compose run --rm backend pnpm --filter @cowork/api prisma:seed
+docker compose up -d --build
+```

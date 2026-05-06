@@ -14,10 +14,10 @@ Logs are JSON. Every production path should include `service` and `correlationId
 
 Workers process:
 
-- `sla-check:v1`
-- `notifications:v1`
-- `reports-jobs:v1`
-- `cleanup-jobs:v1`
+- `sla-check-v1`
+- `notifications-v1`
+- `reports-jobs-v1`
+- `cleanup-jobs-v1`
 
 If a job exhausts attempts, it is persisted to `DeadLetterJob`.
 

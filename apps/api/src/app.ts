@@ -31,7 +31,7 @@ export async function buildApp(deps: { redis: Redis; cache: CacheService | null 
   await app.register(correlationPlugin);
   await app.register(timeoutPlugin);
   await registerSecurity(app);
-  await app.register(authPlugin);
+  await authPlugin(app);
 
   app.addHook("onResponse", async (request, reply) => {
     httpDuration.labels(request.method, request.routeOptions.url ?? "unknown", String(reply.statusCode)).observe(reply.elapsedTime / 1000);

@@ -1,6 +1,6 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl python3 make g++
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json

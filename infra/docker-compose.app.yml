@@ -5,7 +5,7 @@ services:
       dockerfile: apps/api/Dockerfile
     env_file: ../.env
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/ready"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/ready"]
       interval: 10s
       timeout: 5s
       retries: 12
