@@ -13,8 +13,9 @@ Current focused tests cover:
 - Invalid ticket status transitions.
 - Cache stampede prevention.
 - BullMQ retry/backoff defaults.
+- SLA business-hours calculator with pause handling.
 
-Production acceptance target is 70% minimum coverage across API and workers. The first scaffold intentionally wires coverage reporting, but the current API coverage report is below that target because route, auth, upload, websocket, and worker integration suites still need expansion against real PostgreSQL and Redis test containers.
+Production acceptance target is 70% minimum coverage across API and workers. Coverage reporting is wired, but the current API coverage report is still below that target because route, auth, upload, websocket, CRUD, reports, notification and worker integration suites still need expansion against real PostgreSQL and Redis test containers.
 
 Recommended next suites:
 

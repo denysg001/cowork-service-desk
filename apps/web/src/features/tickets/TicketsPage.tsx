@@ -18,7 +18,7 @@ export function TicketsPage() {
   });
   const form = useForm<z.infer<typeof createTicketSchema>>({
     resolver: zodResolver(createTicketSchema),
-    defaultValues: { title: "", description: "", location: "Recepção", priority: "MEDIUM" }
+    defaultValues: { title: "", description: "", categoryId: "00000000-0000-4001-8000-000000009404", companyId: "00000000-0000-4000-8000-310259402657", priority: "MEDIUM" }
   });
   const create = useMutation({
     mutationFn: async (values: z.infer<typeof createTicketSchema>) => api.post("/tickets", { ...values, idempotencyKey: crypto.randomUUID() }),
@@ -35,10 +35,10 @@ export function TicketsPage() {
           <h1 className="text-xl font-semibold">Tickets</h1>
           <Button aria-label="Atualizar" className="h-8 w-8 px-0" onClick={() => void tickets.refetch()}><RefreshCw size={16} /></Button>
         </div>
-        <div className="overflow-hidden rounded-md border border-border bg-white">
+        <div className="overflow-hidden rounded-md border border-border bg-muted">
           <table className="w-full border-collapse text-sm">
             <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="p-3">#</th><th>Título</th><th>Status</th><th>Prioridade</th><th>Local</th><th>Atualizado</th></tr>
+              <tr><th className="p-3">#</th><th>Título</th><th>Status</th><th>Prioridade</th><th>SLA</th><th>Atualizado</th></tr>
             </thead>
             <tbody>
               {tickets.data?.data.map((ticket) => (
@@ -47,7 +47,7 @@ export function TicketsPage() {
                   <td className="max-w-72 truncate">{ticket.title}</td>
                   <td>{ticket.status}</td>
                   <td>{ticket.priority}</td>
-                  <td>{ticket.location}</td>
+                  <td>{ticket.slaStatus}</td>
                   <td>{new Date(ticket.updatedAt).toLocaleString()}</td>
                 </tr>
               ))}
@@ -55,17 +55,18 @@ export function TicketsPage() {
           </table>
         </div>
       </div>
-      <Card className="p-4">
+      <Card className="border-border bg-muted p-4">
         <h2 className="mb-3 text-base font-semibold">Novo ticket</h2>
-        <form className="space-y-3" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
+        <form className="space-y-3" onSubmit={form.handleSubmit((values: z.infer<typeof createTicketSchema>) => create.mutate(values))}>
           <Input placeholder="Título" {...form.register("title")} />
           <Textarea placeholder="Descrição" {...form.register("description")} />
-          <Input placeholder="Local" {...form.register("location")} />
+          <Input placeholder="Categoria ID" {...form.register("categoryId")} />
+          <Input placeholder="Empresa ID" {...form.register("companyId")} />
           <select className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm" {...form.register("priority")}>
             <option value="LOW">LOW</option>
             <option value="MEDIUM">MEDIUM</option>
             <option value="HIGH">HIGH</option>
-            <option value="URGENT">URGENT</option>
+            <option value="CRITICAL">CRITICAL</option>
           </select>
           <Button disabled={create.isPending} type="submit"><Plus size={16} />Criar</Button>
         </form>

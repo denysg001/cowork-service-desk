@@ -1,0 +1,63 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer version, for example v0.2.0-alpha"
+        required: true
+      prerelease:
+        description: "Mark release as prerelease"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate branch
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "Releases must be created from main."
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm build
+        env:
+          DATABASE_URL: postgresql://cowork:cowork@localhost:5432/cowork_service_desk?schema=public
+          REDIS_URL: redis://localhost:6379/0
+          JWT_ACCESS_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+          JWT_REFRESH_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+          COOKIE_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+      - run: pnpm test
+        env:
+          DATABASE_URL: postgresql://cowork:cowork@localhost:5432/cowork_service_desk?schema=public
+          REDIS_URL: redis://localhost:6379/0
+          JWT_ACCESS_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+          JWT_REFRESH_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+          COOKIE_SECRET: 0123456789012345678901234567890123456789012345678901234567891234
+      - name: Create tag
+        run: |
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Release ${{ inputs.version }}. Confirm CHANGELOG.md was updated before publishing production artifacts."
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            gh release create "${{ inputs.version }}" --prerelease --title "${{ inputs.version }}" --notes "$notes"
+          else
+            gh release create "${{ inputs.version }}" --title "${{ inputs.version }}" --notes "$notes"
+          fi

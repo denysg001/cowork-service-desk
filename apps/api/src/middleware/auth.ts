@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { Role } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
-import { unauthorized } from "../utils/errors.js";
+import { forbidden, unauthorized } from "../utils/errors.js";
 import type { AuthUser } from "../types.js";
 
 type AccessClaims = AuthUser & { type: "access" };
@@ -18,5 +19,13 @@ export async function authPlugin(app: FastifyInstance) {
     });
     if (!session) throw unauthorized();
     request.user = { id: claims.id, email: claims.email, role: claims.role, sessionId: claims.sessionId };
+  });
+  app.decorate("requireRole", (...roles: Role[]) => {
+    return async (request: FastifyRequest) => {
+      await app.authenticate(request, {} as never);
+      if (!request.user || !roles.includes(request.user.role)) {
+        throw forbidden();
+      }
+    };
   });
 }

@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cowork_service_desk
+      POSTGRES_USER: cowork
+      POSTGRES_PASSWORD: cowork
+      TZ: UTC
+      PGTZ: UTC
+    command: ["postgres", "-c", "max_connections=120", "-c", "shared_buffers=256MB"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cowork -d cowork_service_desk"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "cowork-redis-password"]
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "cowork-redis-password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "6379:6379"
+
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: cowork
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "while true; do
+      pg_dump -h postgres -U cowork -d cowork_service_desk --format=custom > /backups/cowork-$$(date -u +%Y%m%dT%H%M%SZ).dump;
+      sleep 86400;
+      done"
+
+volumes:
+  postgres_data:
+  redis_data:

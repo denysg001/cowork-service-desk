@@ -1,5 +1,6 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
+RUN apk add --no-cache openssl
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
@@ -13,6 +14,7 @@ RUN pnpm --filter @cowork/shared build && pnpm --filter @cowork/api prisma:gener
 
 FROM node:20-alpine
 WORKDIR /app
+RUN apk add --no-cache openssl
 RUN corepack enable
 ENV NODE_ENV=production
 COPY --from=build /app ./

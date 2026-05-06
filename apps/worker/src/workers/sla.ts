@@ -8,7 +8,7 @@ type SlaJob = { correlationId: string };
 export async function processSla(job: Job<SlaJob>) {
   await withLock("worker:sla:global", 90_000, async () => {
     const batch = await prisma.ticket.findMany({
-      where: { status: { in: ["OPEN", "IN_PROGRESS"] }, deletedAt: null },
+      where: { status: { in: ["NEW", "TRIAGE", "SCHEDULED", "IN_PROGRESS", "WAITING_CLIENT", "WAITING_SUPPLIER", "PAUSED"] }, deletedAt: null },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }, { id: "asc" }],
       take: 100
     });

@@ -1,8 +1,9 @@
-import { paginationQuerySchema, ticketStatusSchema, updateTicketSchema } from "@cowork/shared";
+import { changeTicketStatusSchema, paginationQuerySchema, ticketStatusSchema, updateTicketSchema } from "@cowork/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { CacheService } from "../../services/cache.js";
-import { createTicket, getTicket, listTickets, softDeleteTicket, updateTicket } from "./service.js";
+import { changeTicketStatus, createTicket, getTicket, listTickets, softDeleteTicket, updateTicket } from "./service.js";
+import { prisma } from "../../db/prisma.js";
 
 const listQuery = paginationQuerySchema.extend({ status: ticketStatusSchema.optional() });
 
@@ -31,9 +32,21 @@ export async function ticketRoutes(app: FastifyInstance, cache: CacheService | n
     return result.dto;
   });
 
+  app.patch("/tickets/:id/status", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const result = await changeTicketStatus(id, changeTicketStatusSchema.parse(request.body), { userId: request.user!.id, correlationId: request.correlationId }, cache);
+    reply.header("etag", result.etag);
+    return result.dto;
+  });
+
   app.delete("/tickets/:id", { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     await softDeleteTicket(id, { userId: request.user!.id, correlationId: request.correlationId }, cache);
     return reply.code(204).send();
+  });
+
+  app.get("/tickets/:id/history", { preHandler: [app.authenticate] }, async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    return prisma.ticketHistory.findMany({ where: { ticketId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   });
 }

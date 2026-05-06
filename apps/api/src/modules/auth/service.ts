@@ -63,6 +63,18 @@ export async function revokeSession(sessionId: string) {
   await prisma.session.updateMany({ where: { id: sessionId }, data: { revokedAt: new Date() } });
 }
 
+export async function listSessions(userId: string) {
+  return prisma.session.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true, userAgent: true, ipAddress: true, expiresAt: true, createdAt: true }
+  });
+}
+
+export async function revokeOtherSessions(userId: string, currentSessionId: string) {
+  await prisma.session.updateMany({ where: { userId, id: { not: currentSessionId }, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
 function tokens(user: { id: string; email: string; role: string }, sessionId: string, refreshToken: string) {
   const accessToken = jwt.sign({ type: "access", id: user.id, email: user.email, role: user.role, sessionId }, env.JWT_ACCESS_SECRET, {
     expiresIn: "15m"

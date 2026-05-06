@@ -12,7 +12,7 @@ export async function registerSecurity(app: FastifyInstance) {
   await app.register(cookie, {
     secret: env.COOKIE_SECRET,
     hook: "onRequest",
-    parseOptions: { httpOnly: true, secure: isProduction, sameSite: "strict", path: "/api/v1" }
+    parseOptions: { httpOnly: true, secure: isProduction, sameSite: isProduction ? "strict" : "lax", path: "/api/v1" }
   });
   await app.register(cors, {
     origin(origin, cb) {
@@ -33,8 +33,8 @@ export async function registerSecurity(app: FastifyInstance) {
       }
     },
     hsts: isProduction ? { maxAge: 15552000, includeSubDomains: true, preload: true } : false,
-    frameguard: { action: "deny" },
-    referrerPolicy: { policy: "no-referrer" }
+    frameguard: { action: "sameorigin" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 5 } });
   await app.register(rateLimit, {

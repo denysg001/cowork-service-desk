@@ -52,15 +52,16 @@ function optional<T extends string>(key: T, value: string | undefined): Record<T
 }
 
 export function storageProvider(): StorageProvider {
-  return env.STORAGE_PROVIDER === "s3" ? new S3StorageProvider() : new LocalStorageProvider();
+  return (env.UPLOAD_STORAGE ?? env.STORAGE_PROVIDER) === "s3" ? new S3StorageProvider() : new LocalStorageProvider();
 }
 
 async function validateUpload(filename: string, buffer: Buffer) {
   const base = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
   if (base !== filename || filename.includes("..")) throw badRequest("Invalid filename");
-  if (buffer.byteLength > 10 * 1024 * 1024) throw badRequest("File too large");
+  if (buffer.byteLength > env.UPLOAD_MAX_SIZE_MB * 1024 * 1024) throw badRequest("File too large");
   const detected = await fileTypeFromBuffer(buffer);
-  if (!detected || !allowed.has(detected.mime)) throw badRequest("Unsupported file type");
+  const allowedTypes = env.UPLOAD_ALLOWED_TYPES.split(",").map((item) => item.trim());
+  if (!detected || !allowed.has(detected.mime) || !allowedTypes.includes(detected.mime)) throw badRequest("Unsupported file type");
   const ext = path.extname(filename).toLowerCase();
   if (!allowed.get(detected.mime)!.includes(ext)) throw badRequest("File extension does not match MIME");
   return { mime: detected.mime, sizeBytes: buffer.byteLength, checksum: createHash("sha256").update(buffer).digest("hex") };

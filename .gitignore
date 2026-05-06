@@ -1,8 +1,15 @@
 node_modules
 dist
+build
 coverage
 .env
+.env.*
+!.env.example
 .DS_Store
 *.log
 data
 /uploads
+logs
+tmp
+.prisma/client
+docker-data

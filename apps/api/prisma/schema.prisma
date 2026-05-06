@@ -8,31 +8,55 @@ datasource db {
 }
 
 enum Role {
+  CLIENT
+  OPERATOR
   ADMIN
-  MANAGER
-  AGENT
-  MEMBER
 }
 
 enum TicketStatus {
-  OPEN
+  NEW
+  TRIAGE
+  SCHEDULED
   IN_PROGRESS
+  WAITING_CLIENT
+  WAITING_SUPPLIER
   PAUSED
   RESOLVED
   CLOSED
+  CANCELLED
 }
 
-enum TicketPriority {
+enum Priority {
   LOW
   MEDIUM
   HIGH
-  URGENT
+  CRITICAL
 }
 
-enum JobState {
-  PENDING
-  COMPLETED
-  FAILED
+enum SlaStatus {
+  OK
+  AT_RISK
+  BREACHED
+}
+
+enum MessageType {
+  CLIENT
+  INTERNAL
+}
+
+model Company {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  document  String?
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users   User[]
+  tickets Ticket[]
+
+  @@index([deletedAt])
 }
 
 model User {
@@ -40,25 +64,84 @@ model User {
   email        String    @unique
   name         String
   passwordHash String
-  role         Role      @default(MEMBER)
-  version      Int       @default(0)
+  role         Role      @default(CLIENT)
+  companyId    String?   @db.Uuid
+  active       Boolean   @default(true)
+  version      Int       @default(1)
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  company      Company?  @relation(fields: [companyId], references: [id])
   sessions     Session[]
-  tickets      Ticket[]  @relation("TicketRequester")
-  assigned     Ticket[]  @relation("TicketAssignee")
-  auditLogs    AuditLog[]
+  requestedTickets Ticket[] @relation("TicketRequester")
+  operatedTickets  Ticket[] @relation("TicketOperator")
+  messages      Message[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  ticketHistory TicketHistory[]
+  dashboardLayouts DashboardLayout[]
+
+  @@index([companyId])
+  @@index([role])
+  @@index([deletedAt])
+}
+
+model Room {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  floor     String
+  qrCode    String    @unique
+  positionX Decimal   @db.Decimal(5, 4)
+  positionY Decimal   @db.Decimal(5, 4)
+  width     Decimal   @db.Decimal(5, 4)
+  height    Decimal   @db.Decimal(5, 4)
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tickets Ticket[]
+
+  @@index([deletedAt])
+}
+
+model Category {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slaHours  Int
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tickets Ticket[]
+
+  @@index([deletedAt])
+}
+
+model Supplier {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  email     String?
+  phone     String?
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tickets Ticket[]
+
+  @@index([deletedAt])
 }
 
 model Session {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @db.Uuid
-  refreshHash  String
-  userAgent    String?
-  ipAddress    String?
-  revokedAt    DateTime?
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  refreshHash   String
+  userAgent     String?
+  ipAddress     String?
+  revokedAt     DateTime?
   expiresAt     DateTime
   rotatedFromId String?   @db.Uuid
   createdAt     DateTime  @default(now())
@@ -66,90 +149,190 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@index([userId, createdAt])
+  @@index([expiresAt])
   @@index([refreshHash])
 }
 
 model Ticket {
-  id          String         @id @default(uuid()) @db.Uuid
-  number      Int            @unique @default(autoincrement())
-  title       String
-  description String
-  priority    TicketPriority @default(MEDIUM)
-  status      TicketStatus   @default(OPEN)
-  location    String
-  requesterId String         @db.Uuid
-  assigneeId  String?        @db.Uuid
-  version     Int            @default(0)
-  deletedAt   DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id                  String       @id @default(uuid()) @db.Uuid
+  number              Int          @unique @default(autoincrement())
+  title               String
+  description         String
+  status              TicketStatus @default(NEW)
+  priority            Priority     @default(MEDIUM)
+  categoryId          String       @db.Uuid
+  companyId           String       @db.Uuid
+  roomId              String?      @db.Uuid
+  requesterId         String       @db.Uuid
+  operatorId          String?      @db.Uuid
+  supplierId          String?      @db.Uuid
+  slaDeadline         DateTime?
+  slaStatus           SlaStatus    @default(OK)
+  slaPausedAt         DateTime?
+  slaAccumulatedPause Int          @default(0)
+  scheduledAt         DateTime?
+  diagnosis           String?
+  action              String?
+  validation          String?
+  conclusion          String?
+  resolvedAt          DateTime?
+  closedAt            DateTime?
+  cancelledReason     String?
+  deletedAt           DateTime?
+  version             Int          @default(1)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  requester User  @relation("TicketRequester", fields: [requesterId], references: [id])
-  assignee  User? @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  events    TicketEvent[]
+  category  Category  @relation(fields: [categoryId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
+  room      Room?     @relation(fields: [roomId], references: [id])
+  requester User      @relation("TicketRequester", fields: [requesterId], references: [id])
+  operator  User?     @relation("TicketOperator", fields: [operatorId], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  messages  Message[]
+  history   TicketHistory[]
+  attachments Attachment[]
+  notifications Notification[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([companyId])
+  @@index([operatorId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([status, companyId])
+  @@index([slaStatus, status])
+}
+
+model Message {
+  id        String      @id @default(uuid()) @db.Uuid
+  ticketId  String      @db.Uuid
+  userId    String      @db.Uuid
+  content   String
+  type      MessageType
+  readBy    String[]    @default([])
+  deletedAt DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
   attachments Attachment[]
 
-  @@index([status, createdAt, id])
-  @@index([priority, createdAt, id])
+  @@index([ticketId, createdAt])
+  @@index([ticketId, type])
   @@index([deletedAt])
 }
 
-model TicketEvent {
-  id            String   @id @default(uuid()) @db.Uuid
-  ticketId      String   @db.Uuid
-  actorId       String?  @db.Uuid
-  type          String
-  payload       Json
-  correlationId String
-  createdAt     DateTime @default(now())
+model TicketHistory {
+  id             String        @id @default(uuid()) @db.Uuid
+  ticketId       String        @db.Uuid
+  userId         String?       @db.Uuid
+  action         String
+  fromStatus     TicketStatus?
+  toStatus       TicketStatus?
+  fromOperatorId String?       @db.Uuid
+  toOperatorId   String?       @db.Uuid
+  reason         String?
+  createdAt      DateTime      @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
 
-  @@index([ticketId, createdAt, id])
-}
-
-model Attachment {
-  id           String    @id @default(uuid()) @db.Uuid
-  ticketId     String    @db.Uuid
-  storageKey   String
-  originalName String
-  mime         String
-  sizeBytes    Int
-  checksum     String
-  deletedAt    DateTime?
-  createdAt    DateTime  @default(now())
-
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-}
-
-model IdempotencyKey {
-  id          String    @id @default(uuid()) @db.Uuid
-  key         String
-  scope       String
-  statusCode  Int
-  response    Json
-  expiresAt   DateTime
-  createdAt   DateTime  @default(now())
-
-  @@unique([key, scope])
-  @@index([expiresAt])
+  @@index([ticketId, createdAt])
 }
 
 model AuditLog {
   id            String   @id @default(uuid()) @db.Uuid
-  actorId       String?  @db.Uuid
+  userId        String?  @db.Uuid
   action        String
-  entityType    String
+  entity        String
   entityId      String
   before        Json?
   after         Json?
+  ipAddress     String?
   correlationId String
   createdAt     DateTime @default(now())
 
-  actor User? @relation(fields: [actorId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
-  @@index([entityType, entityId, createdAt])
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  title     String
+  body      String
+  read      Boolean   @default(false)
+  ticketId  String?   @db.Uuid
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([userId, read, createdAt])
+  @@index([deletedAt])
+}
+
+model Attachment {
+  id           String    @id @default(uuid()) @db.Uuid
+  ticketId     String?   @db.Uuid
+  messageId    String?   @db.Uuid
+  filename     String
+  url          String
+  mimeType     String
+  size         Int
+  checksum     String
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  ticket  Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([messageId])
+  @@index([deletedAt])
+}
+
+model DashboardLayout {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  layout    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+model IdempotencyKey {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String
+  scope       String
+  requestHash String?
+  statusCode  Int
+  response    Json
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([key, scope])
+  @@index([expiresAt])
 }
 
 model OutboxEvent {

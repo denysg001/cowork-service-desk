@@ -12,13 +12,19 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { ticketRoutes } from "./modules/tickets/routes.js";
 import { dashboardRoutes } from "./modules/dashboard/routes.js";
 import { uploadRoutes } from "./modules/uploads/routes.js";
+import { adminCrudRoutes } from "./modules/admin/crudRoutes.js";
+import { chatRoutes } from "./modules/chat/routes.js";
+import { notificationRoutes } from "./modules/notifications/routes.js";
+import { reportRoutes } from "./modules/reports/routes.js";
+import { dlqRoutes } from "./modules/admin/dlqRoutes.js";
 import { httpDuration } from "./metrics/metrics.js";
 import type { CacheService } from "./services/cache.js";
+import { env } from "./config/env.js";
 
 export async function buildApp(deps: { redis: Redis; cache: CacheService | null }) {
   const app = Fastify({
     logger: false,
-    bodyLimit: 1_000_000,
+    bodyLimit: env.BODY_LIMIT_BYTES,
     trustProxy: true
   });
 
@@ -48,6 +54,11 @@ export async function buildApp(deps: { redis: Redis; cache: CacheService | null 
     await ticketRoutes(v1, deps.cache);
     await dashboardRoutes(v1, deps.cache);
     await uploadRoutes(v1);
+    await adminCrudRoutes(v1);
+    await chatRoutes(v1);
+    await notificationRoutes(v1);
+    await reportRoutes(v1);
+    await dlqRoutes(v1);
   }, { prefix: "/api/v1" });
 
   return app;

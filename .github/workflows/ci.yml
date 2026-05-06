@@ -1,9 +1,11 @@
 name: ci
 on:
   push:
+    branches: [main, develop]
   pull_request:
+    branches: [main, develop]
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -36,8 +38,26 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile=false
-      - run: pnpm build
-      - run: pnpm test
+      - name: Prisma generate
+        run: pnpm --filter @cowork/api prisma:generate
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Docker build API
+        run: docker build -f apps/api/Dockerfile .
+      - name: Docker build worker
+        run: docker build -f apps/worker/Dockerfile .
+      - name: Docker build web
+        run: docker build -f apps/web/Dockerfile .
+      - name: Security basic
+        run: |
+          ! grep -R "origin: '*'" apps infra || true
+          ! grep -R "localStorage.*refresh" apps || true
+      - name: Docs
+        run: test -f README.md && test -f SECURITY.md && test -f docs/testsprite.md
         env:
           DATABASE_URL: postgresql://cowork:cowork@localhost:5432/cowork_service_desk?schema=public
           REDIS_URL: redis://localhost:6379/0

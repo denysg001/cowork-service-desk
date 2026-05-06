@@ -1,43 +1,53 @@
-# Coworking Service Desk
+# Architecture
 
-Production-grade single-tenant SaaS for coworking operations.
+Coworking Service Desk is a single-tenant SaaS control plane for coworking operations.
 
-## Topology
+## Two-Machine MVP
 
-- DB machine: PostgreSQL 16, Redis 7 with AOF, backup jobs.
-- APP machine: Nginx, Vite-built frontend, stateless Fastify API instances, BullMQ workers.
-- Backend instances are stateless. Sessions are stored in PostgreSQL, not Redis.
-- Socket.io uses Redis Adapter for horizontal fanout. Websocket is an optimization and never the source of truth.
+```mermaid
+flowchart LR
+  subgraph DB[Machine 1 - Data]
+    PG[(PostgreSQL 16 primary)]
+    Redis[(Redis 7 AOF)]
+    Backup[Backup job]
+  end
+  subgraph APP[Machine 2 - App]
+    Nginx[Nginx + TLS]
+    Web[React static build]
+    API[Fastify stateless replicas]
+    Worker[Separate BullMQ workers]
+  end
+  Nginx --> Web
+  Nginx --> API
+  API --> PG
+  API --> Redis
+  Worker --> PG
+  Worker --> Redis
+  Backup --> PG
+```
 
-## Consistency
+## Trade-offs
 
-- Strong consistency: auth, sessions, tickets, status transitions.
-- Eventual consistency: dashboard cache, websocket events, async notifications.
-- All APIs are versioned under `/api/v1`.
-- All persisted timestamps are UTC. `COWORKING_TIMEZONE` is only for SLA business rules.
+- PostgreSQL is primary-only in MVP. Read replicas are a phase-2 concern and require managed database support or real streaming replication.
+- Redis is used for cache, BullMQ, pub/sub and distributed locks. It is not a source of truth for sessions.
+- Websocket is an optimization. REST fetches resolve consistency after reconnect.
+- Workers are separate processes to keep HTTP latency independent from retryable background work.
 
-## PostgreSQL Pooling
+## Stateless API
 
-`DATABASE_URL` includes `connection_limit`. Total DB connections are roughly:
+The API stores no local process state required for correctness. Horizontal scaling is supported by:
 
-`api_replicas * api_connection_limit + worker_replicas * worker_connection_limit + admin_margin`
+- PostgreSQL-backed sessions;
+- Socket.io Redis Adapter;
+- Redis locks for single-run workers;
+- explicit cache invalidation;
+- readiness checks before traffic.
 
-Keep this below PostgreSQL `max_connections` or use PgBouncer/managed pooling before scaling aggressively. Future read replicas should be introduced behind repository methods, keeping writes on primary.
+## Consistency Classes
 
-Never run destructive migrations or `prisma reset` in production.
+- Strong: auth, sessions, ticket state, status transitions, audit trails.
+- Eventual: dashboard cache, websocket notifications, async email, report jobs.
 
-## Degradation
+## Flow Diagrams
 
-- Redis down: API keeps serving DB-backed operations without cache and without distributed websocket fanout.
-- SMTP down: in-app notifications continue; email jobs retry and eventually land in DLQ.
-- Worker down: API continues; jobs accumulate in Redis.
-- S3 down: upload endpoint fails in isolation.
-- Websocket down: frontend refetches REST on reconnect/disconnect.
-
-## Cache Policy
-
-`CacheService` implements short TTL, explicit invalidation, stale-while-revalidate, jitter, and lock-based stampede prevention. Do not cache sessions, chat, critical ticket mutations, or notifications.
-
-## Deploy
-
-Use readiness checks for rolling updates. Backend boots only after DB and Redis are healthy in compose. Graceful shutdown closes Fastify, Prisma, Redis, Socket.io listeners, BullMQ workers, queues, and timers.
+See `README.md` for Mermaid diagrams covering auth, tickets, websocket, SLA, workers, uploads and deploy.

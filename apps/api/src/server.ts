@@ -18,7 +18,7 @@ async function boot() {
     logger.warn("redis_boot_degraded_api_continues_without_cache", { error });
   }
   const app = await buildApp({ redis, cache });
-  await app.listen({ port: env.API_PORT, host: "0.0.0.0" });
+  await app.listen({ port: env.PORT ?? env.API_PORT, host: "0.0.0.0" });
   createSocketServer(app.server, redis, sub);
   logger.info("api_started", { port: env.API_PORT });
 

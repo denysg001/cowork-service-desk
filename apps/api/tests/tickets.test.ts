@@ -12,7 +12,19 @@ vi.mock("../src/db/prisma.js", () => ({
         description: "Broken",
         priority: "HIGH",
         status: "CLOSED",
-        location: "Room 1",
+        slaStatus: "OK",
+        categoryId: "7a85c5fd-0203-49e1-8e4f-698197fcb638",
+        companyId: "7a85c5fd-0203-49e1-8e4f-698197fcb637",
+        roomId: null,
+        requesterId: "7a85c5fd-0203-49e1-8e4f-698197fcb636",
+        operatorId: null,
+        supplierId: null,
+        slaDeadline: null,
+        scheduledAt: null,
+        diagnosis: null,
+        action: null,
+        validation: null,
+        conclusion: null,
         version: 2,
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -21,7 +33,7 @@ vi.mock("../src/db/prisma.js", () => ({
       updateMany: vi.fn(async () => ({ count: 0 })),
       findUniqueOrThrow: vi.fn()
     },
-    ticketEvent: { create: vi.fn() },
+    ticketHistory: { create: vi.fn() },
     auditLog: { create: vi.fn() },
     outboxEvent: { create: vi.fn() },
     $transaction: vi.fn(async (fn) => fn({
@@ -29,7 +41,7 @@ vi.mock("../src/db/prisma.js", () => ({
         updateMany: vi.fn(async () => ({ count: 0 })),
         findUniqueOrThrow: vi.fn()
       },
-      ticketEvent: { create: vi.fn() },
+      ticketHistory: { create: vi.fn() },
       auditLog: { create: vi.fn() },
       outboxEvent: { create: vi.fn() }
     }))
@@ -38,7 +50,8 @@ vi.mock("../src/db/prisma.js", () => ({
 
 describe("tickets", () => {
   it("rejects invalid transitions before writing", async () => {
-    await expect(updateTicket("7a85c5fd-0203-49e1-8e4f-698197fcb639", { version: 2, status: "OPEN" }, { userId: "u", correlationId: "c" }, null)).rejects.toMatchObject({
+    const { changeTicketStatus } = await import("../src/modules/tickets/service.js");
+    await expect(changeTicketStatus("7a85c5fd-0203-49e1-8e4f-698197fcb639", { version: 2, status: "NEW" }, { userId: "u", correlationId: "c" }, null)).rejects.toMatchObject({
       code: "BAD_REQUEST"
     });
   });

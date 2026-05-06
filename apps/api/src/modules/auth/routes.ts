@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { login, refresh, revokeSession } from "./service.js";
+import { listSessions, login, refresh, revokeOtherSessions, revokeSession } from "./service.js";
 import { isProduction } from "../../config/env.js";
 
 const credentials = z.object({ email: z.string().email(), password: z.string().min(8) });
@@ -15,7 +15,7 @@ export async function authRoutes(app: FastifyInstance) {
     reply.setCookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: "strict",
+      sameSite: isProduction ? "strict" : "lax",
       path: "/api/v1/auth",
       maxAge: 60 * 60 * 24 * 30
     });
@@ -28,7 +28,7 @@ export async function authRoutes(app: FastifyInstance) {
     reply.setCookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: "strict",
+      sameSite: isProduction ? "strict" : "lax",
       path: "/api/v1/auth",
       maxAge: 60 * 60 * 24 * 30
     });
@@ -38,6 +38,19 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/logout", { preHandler: [app.authenticate] }, async (request, reply) => {
     await revokeSession(request.user!.sessionId);
     reply.clearCookie("refreshToken", { path: "/api/v1/auth" });
+    return { ok: true };
+  });
+
+  app.get("/auth/sessions", { preHandler: [app.authenticate] }, async (request) => listSessions(request.user!.id));
+
+  app.delete("/auth/sessions/:id", { preHandler: [app.authenticate] }, async (request) => {
+    const id = z.object({ id: z.string().uuid() }).parse(request.params).id;
+    await revokeSession(id);
+    return { ok: true };
+  });
+
+  app.delete("/auth/sessions", { preHandler: [app.authenticate] }, async (request) => {
+    await revokeOtherSessions(request.user!.id, request.user!.sessionId);
     return { ok: true };
   });
 }
